@@ -1,0 +1,15 @@
+# AI Prompt Log - AvianQuest
+
+**Student Name:** Ali Ahmad
+**Project:** AvianQuest
+
+| Date | Feature/Task | AI Prompt Used | AI Output / Result | Human Refinement / Fixes |
+| :--- | :--- | :--- | :--- | :--- |
+| May 10 | Auth & Database | "Create a sqlite3 database manager that uses bcrypt for secure password hashing and includes tables for users, chats, and daily routines." | AI generated the initial `db_manager.py` with secure password storage and session management. | I added the `active_session` table logic to ensure local login persistence. |
+| May 12 | Scoring Algorithm | "Create a function to calculate a score for routine tasks. Give 10 points for on-time tasks, 8 for slightly late, and 5 for very late." | AI implemented the `update_routine_task` logic with hour-based threshold checks. | I refined the math to ensure evening tasks (after 5 PM) were scored correctly compared to morning tasks. |
+| May 13 | Flet V1 Update | "I am getting an AttributeError: 'Icon' object has no attribute 'name' when clicking my routine checkboxes. How do I fix this for Flet V1?" | AI correctly identified that `icon.name` was deprecated and suggested using `icon.icon`. | I applied this fix across all Flet controls in my view files. |
+| May 14 | Seasonal Alerts | "Generate a massive database seed of 224 alerts for 4 seasons and 4 bird types, with emergencies and diseases." | AI created a structured loop to inject 224 alert rows into the `alert_bank` table. | I added a safety check `if cursor.fetchone()[0] < 200:` to prevent database bloat. |
+| May 15 | Lesson Engine Map | "Create a Duolingo-style vertical zig-zag map for my lessons engine using Flet." | AI provided a math-based approach using X-axis offsets for container alignment. | I had to constrain the width to 360px and use `ft.Alignment(0, 0)` because Flet V1 deprecated the `.center` shortcut. |
+| May 18 | Dynamic Quizzes | "Change the lesson engine so that it fetches questions specifically for the user's selected bird." | AI suggested a new table `bird_quiz_questions` and a function `get_quiz_questions(bird_type, module_title)`. | I manually cleaned up the duplicate function names in `db_manager.py` caused by the merge. |
+| May 20 | Grid UI Layout | "The zig-zag layout is squishing on wide screens. Change the lessons engine to a grid layout using Row wrap=True." | AI refactored the course list into a responsive `ft.Row` grid with `wrap=True`. | I used `width=140` for tiles to ensure they wrap cleanly on desktop. |
+| May 21 | 3D UI Polish | "The UI looks flat and ugly. Make the lesson buttons look like 3D physical buttons with shadows and pill-shaped labels." | AI provided a nested `BoxShadow` solution using `ft.Offset` and a modern color palette. | I replaced `ft.colors.with_opacity` with raw string colors to resolve Flet V1 attribute errors. |

@@ -1,73 +1,86 @@
 import flet as ft
 from views.engine_d_chat import create_chat_engine
+from views.engine_a_routine import create_routine_engine
+from views.engine_b_lessons import create_lessons_engine
+from views.engine_c_avian_eye import create_avian_eye_engine
+from views.engine_f_auth import create_auth_engine 
+from views.engine_g_settings import create_settings_engine
+from views.engine_h_onboarding import create_onboarding_engine # ⚡ Import the new engine
+from database import db_manager
 
 def main(page: ft.Page):
-    # --- 1. PAGE CONFIGURATION ---
     page.title = "AvianQuest"
-    page.theme_mode = ft.ThemeMode.DARK 
-    page.window.width = 400
-    page.window.height = 800
+    page.theme_mode = ft.ThemeMode.DARK
+    page.window_width = 400
+    page.window_height = 800
     page.padding = 0
-    page.spacing = 0
 
-    # --- 2. ENGINE INITIALIZATION ---
-    def create_placeholder(text, color):
-        return ft.Container(
-            expand=True,
-            content=ft.Column(
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Container(
-                        width=100, height=100, bgcolor=color, border_radius=25,
-                        content=ft.Icon(ft.Icons.CONSTRUCTION, color="white", size=40)
-                    ),
-                    ft.Text(text, size=22, weight="bold", text_align="center")
-                ]
-            )
+    def handle_logout():
+        page.clean() 
+        route_user() # Send back to router on logout
+
+    def load_main_app():
+        page.clean() 
+        
+        engine_a = create_routine_engine(page)
+        engine_b = create_lessons_engine(page)
+        engine_c = create_avian_eye_engine(page)
+        engine_d = create_chat_engine(page)
+        engine_e = ft.Container(content=ft.Text("Risk Analytics Coming Soon", size=20, color="white"), alignment=ft.Alignment(0, 0))
+        engine_g = create_settings_engine(page, handle_logout)
+
+        def on_nav_change(e):
+            index = e.control.selected_index
+            main_content.content = tabs[index]
+            page.update()
+
+        tabs = [engine_a, engine_b, engine_c, engine_d, engine_e, engine_g]
+
+        bottom_nav = ft.NavigationBar(
+            selected_index=0,
+            on_change=on_nav_change,
+            bgcolor="#1A1A2E",
+            destinations=[
+                ft.NavigationBarDestination(icon=ft.Icons.CHECK_BOX_OUTLINED, selected_icon=ft.Icons.CHECK_BOX, label="Routine"),
+                ft.NavigationBarDestination(icon=ft.Icons.MENU_BOOK_OUTLINED, selected_icon=ft.Icons.MENU_BOOK, label="Lessons"),
+                ft.NavigationBarDestination(icon=ft.Icons.CAMERA_ALT_OUTLINED, selected_icon=ft.Icons.CAMERA_ALT, label="Eye"),
+                ft.NavigationBarDestination(icon=ft.Icons.CHAT_BUBBLE_OUTLINE, selected_icon=ft.Icons.CHAT_BUBBLE, label="Vet"),
+                ft.NavigationBarDestination(icon=ft.Icons.SHOW_CHART_OUTLINED, selected_icon=ft.Icons.SHOW_CHART, label="Risk"),
+                ft.NavigationBarDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Settings"),
+            ]
         )
 
-    engine_a = create_placeholder("Routine Tracker", "#58CC02")
-    engine_b = create_placeholder("Avian Lessons", "#FFC800")
-    engine_c = create_placeholder("Avian Eye AI", "#CE82FF")
-    engine_d = create_chat_engine(page)
-    engine_e = create_placeholder("Risk Predictor", "#FF4B4B")
+        main_content = ft.Container(content=tabs[0], expand=True)
 
-    # --- 3. MAIN DISPLAY AREA ---
-    main_display = ft.Container(content=engine_d, expand=True)
-
-    # --- 4. NAVIGATION LOGIC ---
-    def on_nav_change(e):
-        index = e.control.selected_index
-        if index == 0:
-            main_display.content = engine_a
-        elif index == 1:
-            main_display.content = engine_b
-        elif index == 2:
-            main_display.content = engine_c
-        elif index == 3:
-            main_display.content = engine_d
-        elif index == 4:
-            main_display.content = engine_e
+        page.add(ft.Column([main_content, bottom_nav], spacing=0, expand=True))
         page.update()
 
-    # --- 5. ADVANCED NAVIGATION BAR ---
-    page.navigation_bar = ft.NavigationBar(
-        selected_index=3, 
-        bgcolor="#1A1A2E",
-        on_change=on_nav_change,
-        destinations=[
-            ft.NavigationBarDestination(icon=ft.Icons.CHECK_BOX_OUTLINED, selected_icon=ft.Icons.CHECK_BOX, label="Routine"),
-            ft.NavigationBarDestination(icon=ft.Icons.MENU_BOOK_OUTLINED, selected_icon=ft.Icons.MENU_BOOK, label="Lessons"),
-            ft.NavigationBarDestination(icon=ft.Icons.CAMERA_ALT_OUTLINED, selected_icon=ft.Icons.CAMERA_ALT, label="Avian Eye"),
-            ft.NavigationBarDestination(icon=ft.Icons.CHAT_BUBBLE_OUTLINE, selected_icon=ft.Icons.CHAT_BUBBLE, label="Pocket Vet"),
-            ft.NavigationBarDestination(icon=ft.Icons.SHOW_CHART, label="Risk"),
-        ],
-    )
 
-    # --- 6. ADD TO PAGE ---
-    page.add(main_display)
+    # ⚡ NEW: The Traffic Controller
+    def route_user():
+        page.clean()
+        active_user = db_manager.get_active_session()
+        
+        if active_user:
+            user_id = active_user[0]
+            
+            # Check the database: Have they finished onboarding?
+            is_onboarded = db_manager.check_onboarding_status(user_id)
+            
+            if is_onboarded:
+                load_main_app() # Skip straight to dashboard
+            else:
+                # Show the Duolingo Quiz
+                onboarding_view = create_onboarding_engine(page, route_user)
+                page.add(onboarding_view)
+        else:
+            # Not logged in at all
+            auth_view = create_auth_engine(page, route_user)
+            page.add(auth_view)
+            
+        page.update()
 
-if __name__ == "__main__":
-    # ⚡ FIXED: Modern entry point for Flet >= 0.80.0
-    ft.run(main)
+    db_manager.init_db() 
+    route_user()
+
+ft.run(main)

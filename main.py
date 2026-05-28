@@ -1,11 +1,12 @@
 import flet as ft
-from views.engine_d_chat import create_chat_engine
 from views.engine_a_routine import create_routine_engine
 from views.engine_b_lessons import create_lessons_engine
 from views.engine_c_avian_eye import create_avian_eye_engine
+from views.engine_d_chat import create_chat_engine
+from views.engine_e_risk import create_risk_engine  # ⚡ Added the import!
 from views.engine_f_auth import create_auth_engine 
 from views.engine_g_settings import create_settings_engine
-from views.engine_h_onboarding import create_onboarding_engine # ⚡ Import the new engine
+from views.engine_h_onboarding import create_onboarding_engine
 from database import db_manager
 
 def main(page: ft.Page):
@@ -26,7 +27,7 @@ def main(page: ft.Page):
         engine_b = create_lessons_engine(page)
         engine_c = create_avian_eye_engine(page)
         engine_d = create_chat_engine(page)
-        engine_e = ft.Container(content=ft.Text("Risk Analytics Coming Soon", size=20, color="white"), alignment=ft.Alignment(0, 0))
+        engine_e = create_risk_engine(page) # ⚡ Now it actually calls the engine!
         engine_g = create_settings_engine(page, handle_logout)
 
         def on_nav_change(e):
@@ -55,8 +56,7 @@ def main(page: ft.Page):
         page.add(ft.Column([main_content, bottom_nav], spacing=0, expand=True))
         page.update()
 
-
-    # ⚡ NEW: The Traffic Controller
+    # The Traffic Controller
     def route_user():
         page.clean()
         active_user = db_manager.get_active_session()
@@ -83,4 +83,7 @@ def main(page: ft.Page):
     db_manager.init_db() 
     route_user()
 
-ft.run(main)
+import os
+# This tells Flet to run as a web app on the port Fly.io assigns
+port = int(os.environ.get("PORT", 8080))
+ft.app(target=main, view=ft.WEB_BROWSER, host="0.0.0.0", port=port)

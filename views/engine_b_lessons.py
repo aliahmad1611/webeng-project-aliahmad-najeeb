@@ -11,14 +11,18 @@ def create_lessons_engine(page: ft.Page):
     selected_bird = profile[0] if profile else "Budgie"
 
     # --- 2. FETCH COURSE PROGRESS & LOCK STATE ---
-    saved_progress = db_manager.get_course_progress(user_id)
+    saved_data = db_manager.get_course_progress(user_id)
+    
+    # ⚡ Helper functions to safely extract the nested dictionary
+    def get_p(title): return saved_data.get(title, {"progress": 0.0}).get("progress", 0.0)
+    def get_s(title): return saved_data.get(title, {"score": 0}).get("score", 0)
 
     courses = [
-        {"title": "Avian Diet Basics", "subtitle": "Seeds, Pellets, and Veggie Chop", "icon": ft.Icons.RESTAURANT, "color": "#58CC02", "progress": saved_progress.get("Avian Diet Basics", 0.0)},
-        {"title": "Taming & Trust", "subtitle": "Step-up training and bonding", "icon": ft.Icons.FAVORITE, "color": "#FFC800", "progress": saved_progress.get("Taming & Trust", 0.0)},
-        {"title": "Genetics & Mutations", "subtitle": "Understanding color inheritance", "icon": ft.Icons.SCIENCE, "color": "#CE82FF", "progress": saved_progress.get("Genetics & Mutations", 0.0)},
-        {"title": "Danger Zones", "subtitle": "Household toxins and hazards", "icon": ft.Icons.WARNING_AMBER_ROUNDED, "color": "#FF4B4B", "progress": saved_progress.get("Danger Zones", 0.0)},
-        {"title": "Breeding Basics", "subtitle": "Nest boxes and chick care", "icon": ft.Icons.EGG, "color": "#00CCFF", "progress": saved_progress.get("Breeding Basics", 0.0)}
+        {"title": "Avian Diet Basics", "subtitle": "Seeds, Pellets, and Veggie Chop", "icon": ft.Icons.RESTAURANT, "color": "#58CC02", "progress": get_p("Avian Diet Basics"), "score": get_s("Avian Diet Basics")},
+        {"title": "Taming & Trust", "subtitle": "Step-up training and bonding", "icon": ft.Icons.FAVORITE, "color": "#FFC800", "progress": get_p("Taming & Trust"), "score": get_s("Taming & Trust")},
+        {"title": "Genetics & Mutations", "subtitle": "Understanding color inheritance", "icon": ft.Icons.SCIENCE, "color": "#CE82FF", "progress": get_p("Genetics & Mutations"), "score": get_s("Genetics & Mutations")},
+        {"title": "Danger Zones", "subtitle": "Household toxins and hazards", "icon": ft.Icons.WARNING_AMBER_ROUNDED, "color": "#FF4B4B", "progress": get_p("Danger Zones"), "score": get_s("Danger Zones")},
+        {"title": "Breeding Basics", "subtitle": "Nest boxes and chick care", "icon": ft.Icons.EGG, "color": "#00CCFF", "progress": get_p("Breeding Basics"), "score": get_s("Breeding Basics")}
     ]
 
     # Evaluate what is unlocked
@@ -126,7 +130,11 @@ def create_lessons_engine(page: ft.Page):
         active_course_ref["progress"] = 1.0
         active_course_ref["unlocked"] = True
         
-        db_manager.update_course_progress(user_id, active_course_ref["title"], 1.0)
+        # ⚡ UPGRADED: Push the score to the database on completion
+        db_manager.update_course_progress(user_id, active_course_ref["title"], 1.0, score)
+        
+        # ⚡ Instant UI update locally to prevent needing an app restart
+        active_course_ref["score"] = max(score, active_course_ref.get("score", 0))
         
         for i in range(len(courses)):
             if courses[i]["title"] == active_course_ref["title"] and i + 1 < len(courses):
@@ -211,16 +219,22 @@ def create_lessons_engine(page: ft.Page):
                 on_click=lambda e, c=course, unl=is_unlocked: start_lesson(c) if unl else show_error("🔒 Complete previous lessons to unlock this!")
             )
 
+            # ⚡ UPGRADED: Display the score below the title if the course is finished!
+            score_display = ft.Text(f"⭐ Best Score: {course['score']}", size=11, color="#FFD900", weight="bold") if is_completed else ft.Container()
+
             node_wrapper = ft.Container(
                 content=ft.Column([
                     node_btn,
                     ft.Container(height=4), 
                     ft.Container(
-                        content=ft.Text(course["title"], size=13, weight="w900", color="white" if is_unlocked else "white38", text_align="center", max_lines=2),
+                        content=ft.Column([
+                            ft.Text(course["title"], size=13, weight="w900", color="white" if is_unlocked else "white38", text_align="center", max_lines=2),
+                            score_display
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
                         bgcolor="#22FFFFFF" if is_unlocked else "#0AFFFFFF",
                         padding=ft.padding.symmetric(horizontal=10, vertical=6),
                         border_radius=15,
-                        alignment=ft.Alignment(0, 0) # ⚡ FIXED: Replaced `ft.alignment.center` with Flet V1 safe coordinates!
+                        alignment=ft.Alignment(0, 0) 
                     )
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
                 width=140, 

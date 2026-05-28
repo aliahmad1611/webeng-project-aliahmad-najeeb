@@ -5,9 +5,13 @@ import asyncio
 import os
 import tkinter as tk
 from tkinter import filedialog
+from dotenv import load_dotenv
+
+# ⚡ THE FIX: You must actually execute the function to load the variables!
+load_dotenv()
 
 # --- GEMINI API SETUP ---
-GEMINI_API_KEY = "AIzaSyAwZajoGkYu5O3NpDMXSsGmTpqCBUh6wUM"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 try:
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -74,6 +78,10 @@ def create_avian_eye_engine(page: ft.Page):
     # --- 4. AI ANALYSIS LOGIC ---
     async def process_image_analysis(filepath):
         try:
+            # ⚡ THE FIX: Safe error handling if the API Key is completely missing
+            if client is None:
+                raise ValueError("Gemini API Client failed to initialize. Check your .env file and API key.")
+
             def fetch_vision():
                 with open(filepath, "rb") as f:
                     image_bytes = f.read()
@@ -152,7 +160,6 @@ def create_avian_eye_engine(page: ft.Page):
             ft.Container(height=15),
             loading_indicator,
             
-            # ⚡ THE FIX: Removed expand=True so it grows naturally with the text
             ft.Container(
                 padding=20, 
                 border_radius=20, 
@@ -162,9 +169,9 @@ def create_avian_eye_engine(page: ft.Page):
                     ft.Text("Analysis Report", size=18, weight="bold", color="white"),
                     ft.Divider(color="#33FFFFFF"),
                     result_markdown
-                ]) # Removed inner scroll here
+                ]) 
             ),
-            ft.Container(height=30) # Bottom padding so it doesn't hug the bottom navigation bar
+            ft.Container(height=30) 
             
-        ], scroll=ft.ScrollMode.AUTO) # ⚡ THE FIX: The whole screen is now scrollable
+        ], scroll=ft.ScrollMode.AUTO) 
     )

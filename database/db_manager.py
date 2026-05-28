@@ -228,10 +228,17 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             title TEXT,
-            progress REAL
+            progress REAL,
+            score INTEGER DEFAULT 0
         )
     """)
     
+    # ⚡ SAFE UPGRADE: Inject the score column if it doesn't exist yet!
+    try:
+        cursor.execute("ALTER TABLE user_course_progress ADD COLUMN score INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     # BIRD-SPECIFIC QUIZ QUESTIONS
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bird_quiz_questions (
@@ -452,16 +459,13 @@ def update_routine_task(user_id, state_key, title, completed):
     current_time_str = now.strftime("%a, %I:%M %p") if completed else None
     score = 0
     
-    # The Forgiving Scoring Algorithm
     if completed:
         hour = now.hour
         if "Evening" in title or "Night" in title:
-            # Evening Task Target: 5:00 PM to 8:59 PM (17:00 - 20:59)
             if 17 <= hour <= 20: score = 10
             elif hour == 21: score = 8
             else: score = 5 
         else:
-            # Morning Task Target: Before 10:59 AM
             if hour <= 10: score = 10
             elif hour <= 12: score = 8
             else: score = 5 
@@ -518,20 +522,29 @@ def update_alert_status(user_id, state_key, alert_id, passed):
 def get_course_progress(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT title, progress FROM user_course_progress WHERE user_id = ?", (user_id,))
-    rows = cursor.fetchall()
+    try:
+        # ⚡ Try to fetch with the new score column
+        cursor.execute("SELECT title, progress, score FROM user_course_progress WHERE user_id = ?", (user_id,))
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        # Failsafe fallback if the ALTER TABLE hasn't committed yet
+        cursor.execute("SELECT title, progress FROM user_course_progress WHERE user_id = ?", (user_id,))
+        rows = [(r[0], r[1], 0) for r in cursor.fetchall()]
+        
     conn.close()
-    return {row[0]: row[1] for row in rows}
+    return {row[0]: {"progress": row[1], "score": row[2] or 0} for row in rows}
 
-def update_course_progress(user_id, title, progress):
+def update_course_progress(user_id, title, progress, score=0):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM user_course_progress WHERE user_id = ? AND title = ?", (user_id, title))
+    cursor.execute("SELECT id, score FROM user_course_progress WHERE user_id = ? AND title = ?", (user_id, title))
     row = cursor.fetchone()
     if row:
-        cursor.execute("UPDATE user_course_progress SET progress = ? WHERE id = ?", (progress, row[0]))
+        # ⚡ Only update the score if it is higher than their previous attempt!
+        best_score = max(score, row[1] if row[1] else 0)
+        cursor.execute("UPDATE user_course_progress SET progress = ?, score = ? WHERE id = ?", (progress, best_score, row[0]))
     else:
-        cursor.execute("INSERT INTO user_course_progress (user_id, title, progress) VALUES (?, ?, ?)", (user_id, title, progress))
+        cursor.execute("INSERT INTO user_course_progress (user_id, title, progress, score) VALUES (?, ?, ?, ?)", (user_id, title, progress, score))
     conn.commit()
     conn.close()
 

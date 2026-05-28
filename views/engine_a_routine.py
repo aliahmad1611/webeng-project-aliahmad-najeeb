@@ -17,7 +17,6 @@ def create_routine_engine(page: ft.Page):
         {"id": "s4", "title": "Spring (Molting)", "icon": ft.Icons.ECO}
     ]
 
-    # ⚡ NEW: Dynamic Tasks tailored for each Season
     SEASON_TASKS = {
         "s1": [
             {"title": "Morning Water Change", "icon": ft.Icons.WATER_DROP},
@@ -62,6 +61,7 @@ def create_routine_engine(page: ft.Page):
             completed_items = 0
             total_score = 0
             total_possible_items = 42 
+            max_season_score = 420.0 # ⚡ The ultimate score ceiling
             
             for day in range(1, 8):
                 state_key = f"{s_id}_day_{day}"
@@ -78,9 +78,17 @@ def create_routine_engine(page: ft.Page):
                         completed_items += 1
                         total_score += 10 
             
-            prog_val = completed_items / total_possible_items if total_possible_items > 0 else 0.0
-            progress_data[s_id] = {"progress": prog_val, "score": total_score, "unlocked": is_next_unlocked}
-            is_next_unlocked = (completed_items >= total_possible_items)
+            # ⚡ STRICT MATH FIX: Percentage is now tied explicitly to the score and clamped at 1.0 (100%)
+            clamped_score = min(total_score, int(max_season_score))
+            prog_val = clamped_score / max_season_score
+            
+            progress_data[s_id] = {
+                "progress": prog_val, 
+                "score": clamped_score, 
+                "unlocked": is_next_unlocked
+            }
+            # Forgive a few missed testing clicks to ensure the next season unlocks
+            is_next_unlocked = (completed_items >= (total_possible_items - 5))
             
         return progress_data
 
@@ -104,7 +112,7 @@ def create_routine_engine(page: ft.Page):
                     ft.Column([
                         ft.Row([
                             ft.Text("Season Completion", size=12, color="white54"), 
-                            ft.Text(f"⭐ {score} / 420 pts   •   {int(prog_val * 100)}%", size=12, color="white" if is_unlocked else "white54", weight="bold")
+                            ft.Text(f"⭐ {score} / 420 pts  •  {int(prog_val * 100)}%", size=12, color="white" if is_unlocked else "white54", weight="bold")
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.ProgressBar(value=prog_val, color="#58CC02", bgcolor="#22FFFFFF", height=6)
                     ], spacing=5)
@@ -131,7 +139,6 @@ def create_routine_engine(page: ft.Page):
         day_buttons_row = ft.Row(scroll=ft.ScrollMode.AUTO)
         content_col = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, spacing=20)
         
-        # ⚡ Load the specific tasks for the Season they clicked
         active_tasks = SEASON_TASKS.get(season_id, SEASON_TASKS["s1"])
         
         def render_day_content():

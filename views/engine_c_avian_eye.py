@@ -50,8 +50,8 @@ def create_avian_eye_engine(page: ft.Page):
     loading_indicator = ft.ProgressBar(color="#CE82FF", bgcolor="#22FFFFFF", visible=False)
     analyze_btn = ft.ElevatedButton("Analyze Image", icon=ft.Icons.DOCUMENT_SCANNER, bgcolor="#CE82FF", color="#1A1A2E", disabled=True, expand=True)
 
-    # --- 3. THE HYBRID WEB/DESKTOP FILE PICKER ---
-    def on_file_picked(e: ft.FilePickerResultEvent):
+    # --- 3. THE HYBRID WEB/DESKTOP FILE PICKER (Fixed for Flet 0.81.0) ---
+    def on_file_picked(e):
         nonlocal selected_image_path
         if e.files and len(e.files) > 0:
             f = e.files[0]
@@ -72,7 +72,7 @@ def create_avian_eye_engine(page: ft.Page):
                 upload_url = page.get_upload_url(f.name, 60) # Generate 60-second temp link
                 file_picker.upload([ft.FilePickerUploadFile(f.name, upload_url=upload_url)])
 
-    def on_file_uploaded(e: ft.FilePickerUploadEvent):
+    def on_file_uploaded(e):
         nonlocal selected_image_path
         if e.progress == 1.0: # 100% Complete
             # Save the new server path so Gemini can read it
@@ -141,6 +141,9 @@ def create_avian_eye_engine(page: ft.Page):
         result_markdown.value = "⏳ *Avian Eye is scanning the image...*"
         page.update()
         page.run_task(process_image_analysis, selected_image_path)
+    
+    # ⚡ Attaching the click event to the button
+    analyze_btn.on_click = handle_analyze_click
 
     # --- 5. FINAL LAYOUT ---
     return ft.Container(

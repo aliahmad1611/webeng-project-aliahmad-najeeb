@@ -6,7 +6,7 @@ import os
 import base64
 from dotenv import load_dotenv
 
-# ⚡ THE FIX: You must actually execute the function to load the variables!
+# ⚡ Load the environment variables
 load_dotenv()
 
 # --- GEMINI API SETUP ---
@@ -20,7 +20,6 @@ except:
 def create_avian_eye_engine(page: ft.Page):
     
     # --- 1. STATE MANAGEMENT (IN-MEMORY) ---
-    # We no longer save files to the hard drive. We hold the raw bytes in memory!
     selected_image_bytes = None
     selected_image_mime = "image/jpeg"
 
@@ -48,17 +47,24 @@ def create_avian_eye_engine(page: ft.Page):
     loading_indicator = ft.ProgressBar(color="#CE82FF", bgcolor="#22FFFFFF", visible=False)
     analyze_btn = ft.ElevatedButton("Analyze Image", icon=ft.Icons.DOCUMENT_SCANNER, bgcolor="#CE82FF", color="#1A1A2E", disabled=True, expand=True)
 
-    # --- 3. THE NEXT-GEN IN-MEMORY FILE PICKER ---
-    def on_file_picked(e):
+    # --- 3. THE NEXT-GEN FLET 0.81.0 ASYNC FILE PICKER ---
+    async def trigger_upload(e):
         nonlocal selected_image_bytes, selected_image_mime
         
-        # Check if a file was successfully picked
-        if e.files and len(e.files) > 0:
-            f = e.files[0]
+        # ⚡ THE FIX: FilePicker is now an async background service! No overlay needed.
+        files = await ft.FilePicker().pick_files(
+            allow_multiple=False, 
+            allowed_extensions=["png", "jpg", "jpeg", "webp"],
+            with_data=True # Grabs raw bytes straight from the web browser!
+        )
+        
+        # If the user successfully picked a file
+        if files and len(files) > 0:
+            f = files[0]
             
-            # The actual image bytes are passed directly from the web browser!
-            if f.content:
-                selected_image_bytes = f.content
+            # Access the raw memory bytes (.bytes) 
+            if f.bytes:
+                selected_image_bytes = f.bytes
                 
                 # Assign the correct Mime Type for Gemini
                 if f.name.lower().endswith(".png"): selected_image_mime = "image/png"
@@ -66,7 +72,7 @@ def create_avian_eye_engine(page: ft.Page):
                 else: selected_image_mime = "image/jpeg"
                 
                 # Convert the bytes to Base64 to display it in the Flet UI
-                encoded_string = base64.b64encode(f.content).decode("utf-8")
+                encoded_string = base64.b64encode(f.bytes).decode("utf-8")
                 
                 image_display.content = ft.Image(src_base64=encoded_string, fit="cover", expand=True)
                 image_display.border = ft.border.all(2, "#CE82FF") 
@@ -74,21 +80,17 @@ def create_avian_eye_engine(page: ft.Page):
                 result_markdown.value = "*Image loaded securely into memory. Ready for AI Analysis.*"
                 page.update()
 
-    file_picker = ft.FilePicker(on_result=on_file_picked)
-    page.overlay.append(file_picker)
-
-    def trigger_upload(e):
-        # ⚡ THE FIX: with_data=True reads the file into memory instantly without saving it!
-        file_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"], with_data=True)
-
     # --- 4. AI ANALYSIS LOGIC ---
-    async def process_image_analysis():
+    async def handle_analyze_click(e):
+        if not selected_image_bytes: return
+        analyze_btn.disabled = True
+        loading_indicator.visible = True
+        result_markdown.value = "⏳ *Avian Eye is scanning the image...*"
+        page.update()
+        
         try:
             if client is None:
                 raise ValueError("Gemini API Client failed to initialize. Check your API key.")
-
-            if not selected_image_bytes:
-                raise ValueError("No image data found in memory.")
 
             def fetch_vision():
                 vision_prompt = """
@@ -98,8 +100,6 @@ def create_avian_eye_engine(page: ft.Page):
                 3. If it's droppings, analyze for health indicators.
                 Keep your response highly structured, professional, and concise. Use markdown bolding for key terms.
                 """
-                
-                # We feed the raw memory bytes straight to Google GenAI
                 return client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=[
@@ -111,21 +111,13 @@ def create_avian_eye_engine(page: ft.Page):
             response = await asyncio.to_thread(fetch_vision)
             result_markdown.value = response.text
 
-        except Exception as e:
-            result_markdown.value = f"⚠️ **Analysis Failed:**\n{str(e)}"
+        except Exception as err:
+            result_markdown.value = f"⚠️ **Analysis Failed:**\n{str(err)}"
         
         finally:
             loading_indicator.visible = False
             analyze_btn.disabled = False
             page.update()
-
-    def handle_analyze_click(e):
-        if not selected_image_bytes: return
-        analyze_btn.disabled = True
-        loading_indicator.visible = True
-        result_markdown.value = "⏳ *Avian Eye is scanning the image...*"
-        page.update()
-        page.run_task(process_image_analysis)
 
     analyze_btn.on_click = handle_analyze_click
 
@@ -154,7 +146,7 @@ def create_avian_eye_engine(page: ft.Page):
                     bgcolor="#22FFFFFF", 
                     color="white", 
                     expand=True,
-                    on_click=trigger_upload 
+                    on_click=trigger_upload # ⚡ Attached the async service here
                 ),
                 analyze_btn
             ]),

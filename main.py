@@ -83,4 +83,9 @@ def main(page: ft.Page):
     db_manager.init_db() 
     route_user()
 
-ft.run(main)
+import os
+
+# Flet needs to listen to the specific port Railway assigns it
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    ft.app(target=main, view=ft.WEB_BROWSER, host="0.0.0.0", port=port)

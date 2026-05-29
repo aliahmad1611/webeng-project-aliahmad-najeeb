@@ -6,10 +6,7 @@ import os
 import base64
 from dotenv import load_dotenv
 
-# ⚡ Load the environment variables
 load_dotenv()
-
-# --- GEMINI API SETUP ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 try:
@@ -19,11 +16,10 @@ except:
 
 def create_avian_eye_engine(page: ft.Page):
     
-    # --- 1. STATE MANAGEMENT (IN-MEMORY) ---
     selected_image_bytes = None
     selected_image_mime = "image/jpeg"
 
-    # --- 2. UI COMPONENTS ---
+    # --- UI COMPONENTS ---
     image_display = ft.Container(
         content=ft.Column([
             ft.Icon(ft.Icons.ADD_A_PHOTO, size=50, color="white54"),
@@ -47,22 +43,27 @@ def create_avian_eye_engine(page: ft.Page):
     loading_indicator = ft.ProgressBar(color="#CE82FF", bgcolor="#22FFFFFF", visible=False)
     analyze_btn = ft.ElevatedButton("Analyze Image", icon=ft.Icons.DOCUMENT_SCANNER, bgcolor="#CE82FF", color="#1A1A2E", disabled=True, expand=True)
 
-    # --- 3. THE NEXT-GEN FLET 0.81.0 ASYNC FILE PICKER ---
+    # --- THE NEXT-GEN FLET 0.81.0 ASYNC FILE PICKER ---
+    file_picker = ft.FilePicker()
+    
+    # In Flet 0.81.0, FilePicker is a 'service', not a standard UI overlay control!
+    if hasattr(page, 'services'):
+        page.services.append(file_picker)
+    else:
+        page.overlay.append(file_picker)
+
     async def trigger_upload(e):
         nonlocal selected_image_bytes, selected_image_mime
         
-        # ⚡ THE FIX: FilePicker is now an async background service! No overlay needed.
-        files = await ft.FilePicker().pick_files(
+        # We await the picker directly; no on_result callback is needed!
+        files = await file_picker.pick_files(
             allow_multiple=False, 
             allowed_extensions=["png", "jpg", "jpeg", "webp"],
-            with_data=True # Grabs raw bytes straight from the web browser!
+            with_data=True 
         )
         
-        # If the user successfully picked a file
         if files and len(files) > 0:
             f = files[0]
-            
-            # Access the raw memory bytes (.bytes) 
             if f.bytes:
                 selected_image_bytes = f.bytes
                 
@@ -71,7 +72,7 @@ def create_avian_eye_engine(page: ft.Page):
                 elif f.name.lower().endswith(".webp"): selected_image_mime = "image/webp"
                 else: selected_image_mime = "image/jpeg"
                 
-                # Convert the bytes to Base64 to display it in the Flet UI
+                # Convert the bytes to Base64 to display it in the UI instantly
                 encoded_string = base64.b64encode(f.bytes).decode("utf-8")
                 
                 image_display.content = ft.Image(src_base64=encoded_string, fit="cover", expand=True)
@@ -80,7 +81,6 @@ def create_avian_eye_engine(page: ft.Page):
                 result_markdown.value = "*Image loaded securely into memory. Ready for AI Analysis.*"
                 page.update()
 
-    # --- 4. AI ANALYSIS LOGIC ---
     async def handle_analyze_click(e):
         if not selected_image_bytes: return
         analyze_btn.disabled = True
@@ -121,7 +121,6 @@ def create_avian_eye_engine(page: ft.Page):
 
     analyze_btn.on_click = handle_analyze_click
 
-    # --- 5. FINAL LAYOUT ---
     return ft.Container(
         expand=True,
         gradient=ft.LinearGradient(begin=ft.Alignment(-1, -1), end=ft.Alignment(1, 1), colors=["#1a1a2e", "#16213e", "#0f3460"]),
@@ -146,7 +145,7 @@ def create_avian_eye_engine(page: ft.Page):
                     bgcolor="#22FFFFFF", 
                     color="white", 
                     expand=True,
-                    on_click=trigger_upload # ⚡ Attached the async service here
+                    on_click=trigger_upload 
                 ),
                 analyze_btn
             ]),

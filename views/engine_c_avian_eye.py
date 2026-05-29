@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 import asyncio
 import os
+import base64
 from dotenv import load_dotenv
 
 # ⚡ THE FIX: You must actually execute the function to load the variables!
@@ -18,13 +19,10 @@ except:
 
 def create_avian_eye_engine(page: ft.Page):
     
-    # --- 1. STATE MANAGEMENT ---
-    selected_image_path = None
-    upload_dir = "uploads"
-    
-    # Ensure the uploads directory exists on the server to prevent crash
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
+    # --- 1. STATE MANAGEMENT (IN-MEMORY) ---
+    # We no longer save files to the hard drive. We hold the raw bytes in memory!
+    selected_image_bytes = None
+    selected_image_mime = "image/jpeg"
 
     # --- 2. UI COMPONENTS ---
     image_display = ft.Container(
@@ -50,63 +48,49 @@ def create_avian_eye_engine(page: ft.Page):
     loading_indicator = ft.ProgressBar(color="#CE82FF", bgcolor="#22FFFFFF", visible=False)
     analyze_btn = ft.ElevatedButton("Analyze Image", icon=ft.Icons.DOCUMENT_SCANNER, bgcolor="#CE82FF", color="#1A1A2E", disabled=True, expand=True)
 
-    # --- 3. THE HYBRID WEB/DESKTOP FILE PICKER (Fixed for Flet 0.81.0) ---
+    # --- 3. THE NEXT-GEN IN-MEMORY FILE PICKER ---
     def on_file_picked(e):
-        nonlocal selected_image_path
+        nonlocal selected_image_bytes, selected_image_mime
+        
+        # Check if a file was successfully picked
         if e.files and len(e.files) > 0:
             f = e.files[0]
             
-            # SCENARIO A: Local Desktop App (Instant path access)
-            if f.path: 
-                selected_image_path = f.path
-                image_display.content = ft.Image(src=selected_image_path, fit="cover", expand=True)
+            # The actual image bytes are passed directly from the web browser!
+            if f.content:
+                selected_image_bytes = f.content
+                
+                # Assign the correct Mime Type for Gemini
+                if f.name.lower().endswith(".png"): selected_image_mime = "image/png"
+                elif f.name.lower().endswith(".webp"): selected_image_mime = "image/webp"
+                else: selected_image_mime = "image/jpeg"
+                
+                # Convert the bytes to Base64 to display it in the Flet UI
+                encoded_string = base64.b64encode(f.content).decode("utf-8")
+                
+                image_display.content = ft.Image(src_base64=encoded_string, fit="cover", expand=True)
                 image_display.border = ft.border.all(2, "#CE82FF") 
                 analyze_btn.disabled = False
-                result_markdown.value = "*Image loaded successfully from PC. Ready for AI Analysis.*"
+                result_markdown.value = "*Image loaded securely into memory. Ready for AI Analysis.*"
                 page.update()
-            
-            # SCENARIO B: Web App (Requires uploading from Browser to Server)
-            else:
-                result_markdown.value = f"⏳ *Uploading {f.name} to server...*"
-                page.update()
-                upload_url = page.get_upload_url(f.name, 60) # Generate 60-second temp link
-                file_picker.upload([ft.FilePickerUploadFile(f.name, upload_url=upload_url)])
 
-    def on_file_uploaded(e):
-        nonlocal selected_image_path
-        if e.progress == 1.0: # 100% Complete
-            # Save the new server path so Gemini can read it
-            selected_image_path = os.path.join(upload_dir, e.file_name)
-            
-            # Flet web servers automatically host images in the upload_dir at the root "/"
-            image_display.content = ft.Image(src=f"/{e.file_name}", fit="cover", expand=True)
-            image_display.border = ft.border.all(2, "#CE82FF") 
-            analyze_btn.disabled = False
-            result_markdown.value = "*Image successfully transferred to server. Ready for AI Analysis.*"
-            page.update()
-
-    # Create the picker and attach it invisibly to the page
-    file_picker = ft.FilePicker(on_result=on_file_picked, on_upload=on_file_uploaded)
+    file_picker = ft.FilePicker(on_result=on_file_picked)
     page.overlay.append(file_picker)
 
     def trigger_upload(e):
-        # This tells Chrome/Safari/Windows to open its native file menu safely
-        file_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"])
+        # ⚡ THE FIX: with_data=True reads the file into memory instantly without saving it!
+        file_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"], with_data=True)
 
     # --- 4. AI ANALYSIS LOGIC ---
-    async def process_image_analysis(filepath):
+    async def process_image_analysis():
         try:
             if client is None:
                 raise ValueError("Gemini API Client failed to initialize. Check your API key.")
 
-            def fetch_vision():
-                with open(filepath, "rb") as f:
-                    image_bytes = f.read()
-                
-                mime_type = "image/jpeg"
-                if filepath.lower().endswith(".png"): mime_type = "image/png"
-                elif filepath.lower().endswith(".webp"): mime_type = "image/webp"
+            if not selected_image_bytes:
+                raise ValueError("No image data found in memory.")
 
+            def fetch_vision():
                 vision_prompt = """
                 You are an expert avian veterinarian and ornithologist. Analyze this image. 
                 1. If it's a bird, identify the likely species and mutation/coloration. Check for visible health issues.
@@ -115,10 +99,11 @@ def create_avian_eye_engine(page: ft.Page):
                 Keep your response highly structured, professional, and concise. Use markdown bolding for key terms.
                 """
                 
+                # We feed the raw memory bytes straight to Google GenAI
                 return client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                        types.Part.from_bytes(data=selected_image_bytes, mime_type=selected_image_mime),
                         vision_prompt
                     ]
                 )
@@ -135,14 +120,13 @@ def create_avian_eye_engine(page: ft.Page):
             page.update()
 
     def handle_analyze_click(e):
-        if not selected_image_path: return
+        if not selected_image_bytes: return
         analyze_btn.disabled = True
         loading_indicator.visible = True
         result_markdown.value = "⏳ *Avian Eye is scanning the image...*"
         page.update()
-        page.run_task(process_image_analysis, selected_image_path)
-    
-    # ⚡ Attaching the click event to the button
+        page.run_task(process_image_analysis)
+
     analyze_btn.on_click = handle_analyze_click
 
     # --- 5. FINAL LAYOUT ---

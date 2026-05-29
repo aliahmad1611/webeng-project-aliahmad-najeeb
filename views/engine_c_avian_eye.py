@@ -3,8 +3,6 @@ from google import genai
 from google.genai import types
 import asyncio
 import os
-import tkinter as tk
-from tkinter import filedialog
 from dotenv import load_dotenv
 
 # ⚡ THE FIX: You must actually execute the function to load the variables!
@@ -22,6 +20,11 @@ def create_avian_eye_engine(page: ft.Page):
     
     # --- 1. STATE MANAGEMENT ---
     selected_image_path = None
+    upload_dir = "uploads"
+    
+    # Ensure the uploads directory exists on the server to prevent crash
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
 
     # --- 2. UI COMPONENTS ---
     image_display = ft.Container(
@@ -47,40 +50,54 @@ def create_avian_eye_engine(page: ft.Page):
     loading_indicator = ft.ProgressBar(color="#CE82FF", bgcolor="#22FFFFFF", visible=False)
     analyze_btn = ft.ElevatedButton("Analyze Image", icon=ft.Icons.DOCUMENT_SCANNER, bgcolor="#CE82FF", color="#1A1A2E", disabled=True, expand=True)
 
-    # --- 3. THE NATIVE OS FILE PICKER HACK ---
-    def open_native_picker(e):
+    # --- 3. THE HYBRID WEB/DESKTOP FILE PICKER ---
+    def on_file_picked(e: ft.FilePickerResultEvent):
         nonlocal selected_image_path
-        
-        root = tk.Tk()
-        root.withdraw() 
-        root.attributes('-topmost', True) 
-        
-        filepath = filedialog.askopenfilename(
-            title="Select an Avian Photo",
-            filetypes=(("Image Files", "*.jpg;*.jpeg;*.png;*.webp"), ("All Files", "*.*"))
-        )
-        root.destroy() 
-        
-        if filepath:
-            selected_image_path = filepath
+        if e.files and len(e.files) > 0:
+            f = e.files[0]
             
-            image_display.content = ft.Image(
-                src=selected_image_path,
-                fit="cover", 
-                expand=True
-            )
+            # SCENARIO A: Local Desktop App (Instant path access)
+            if f.path: 
+                selected_image_path = f.path
+                image_display.content = ft.Image(src=selected_image_path, fit="cover", expand=True)
+                image_display.border = ft.border.all(2, "#CE82FF") 
+                analyze_btn.disabled = False
+                result_markdown.value = "*Image loaded successfully from PC. Ready for AI Analysis.*"
+                page.update()
+            
+            # SCENARIO B: Web App (Requires uploading from Browser to Server)
+            else:
+                result_markdown.value = f"⏳ *Uploading {f.name} to server...*"
+                page.update()
+                upload_url = page.get_upload_url(f.name, 60) # Generate 60-second temp link
+                file_picker.upload([ft.FilePickerUploadFile(f.name, upload_url=upload_url)])
+
+    def on_file_uploaded(e: ft.FilePickerUploadEvent):
+        nonlocal selected_image_path
+        if e.progress == 1.0: # 100% Complete
+            # Save the new server path so Gemini can read it
+            selected_image_path = os.path.join(upload_dir, e.file_name)
+            
+            # Flet web servers automatically host images in the upload_dir at the root "/"
+            image_display.content = ft.Image(src=f"/{e.file_name}", fit="cover", expand=True)
             image_display.border = ft.border.all(2, "#CE82FF") 
-            
             analyze_btn.disabled = False
-            result_markdown.value = "*Image loaded successfully. Ready for AI Analysis.*"
+            result_markdown.value = "*Image successfully transferred to server. Ready for AI Analysis.*"
             page.update()
+
+    # Create the picker and attach it invisibly to the page
+    file_picker = ft.FilePicker(on_result=on_file_picked, on_upload=on_file_uploaded)
+    page.overlay.append(file_picker)
+
+    def trigger_upload(e):
+        # This tells Chrome/Safari/Windows to open its native file menu safely
+        file_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"])
 
     # --- 4. AI ANALYSIS LOGIC ---
     async def process_image_analysis(filepath):
         try:
-            # ⚡ THE FIX: Safe error handling if the API Key is completely missing
             if client is None:
-                raise ValueError("Gemini API Client failed to initialize. Check your .env file and API key.")
+                raise ValueError("Gemini API Client failed to initialize. Check your API key.")
 
             def fetch_vision():
                 with open(filepath, "rb") as f:
@@ -125,8 +142,6 @@ def create_avian_eye_engine(page: ft.Page):
         page.update()
         page.run_task(process_image_analysis, selected_image_path)
 
-    analyze_btn.on_click = handle_analyze_click
-
     # --- 5. FINAL LAYOUT ---
     return ft.Container(
         expand=True,
@@ -152,7 +167,7 @@ def create_avian_eye_engine(page: ft.Page):
                     bgcolor="#22FFFFFF", 
                     color="white", 
                     expand=True,
-                    on_click=open_native_picker 
+                    on_click=trigger_upload 
                 ),
                 analyze_btn
             ]),

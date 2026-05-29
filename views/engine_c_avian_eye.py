@@ -46,7 +46,6 @@ def create_avian_eye_engine(page: ft.Page):
     # --- THE NEXT-GEN FLET 0.81.0 ASYNC FILE PICKER ---
     file_picker = ft.FilePicker()
     
-    # In Flet 0.81.0, FilePicker is a 'service', not a standard UI overlay control!
     if hasattr(page, 'services'):
         page.services.append(file_picker)
     else:
@@ -55,7 +54,6 @@ def create_avian_eye_engine(page: ft.Page):
     async def trigger_upload(e):
         nonlocal selected_image_bytes, selected_image_mime
         
-        # We await the picker directly; no on_result callback is needed!
         files = await file_picker.pick_files(
             allow_multiple=False, 
             allowed_extensions=["png", "jpg", "jpeg", "webp"],
@@ -67,15 +65,15 @@ def create_avian_eye_engine(page: ft.Page):
             if f.bytes:
                 selected_image_bytes = f.bytes
                 
-                # Assign the correct Mime Type for Gemini
                 if f.name.lower().endswith(".png"): selected_image_mime = "image/png"
                 elif f.name.lower().endswith(".webp"): selected_image_mime = "image/webp"
                 else: selected_image_mime = "image/jpeg"
                 
-                # Convert the bytes to Base64 to display it in the UI instantly
                 encoded_string = base64.b64encode(f.bytes).decode("utf-8")
                 
-                image_display.content = ft.Image(src_base64=encoded_string, fit="cover", expand=True)
+                # ⚡ THE FINAL FIX: src_base64 is removed. We use 'src' for base64 now!
+                image_display.content = ft.Image(src=encoded_string, fit="cover", expand=True)
+                
                 image_display.border = ft.border.all(2, "#CE82FF") 
                 analyze_btn.disabled = False
                 result_markdown.value = "*Image loaded securely into memory. Ready for AI Analysis.*"
